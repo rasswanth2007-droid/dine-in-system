@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – My Bookings</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="restaurants.html">Restaurants</a>
+      <a href="mybookings.html">My Bookings</a>
+      <a href="staff.html">Staff</a>
+      <a href="stats.html">Stats</a>
+    </nav>
+
+    <h1>My Bookings</h1>
+
+    <p id="status">Loading...</p>
+    <p class="error" id="errorMsg"></p>
+
+    <div id="content"></div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    requireLogin();
+
+    function escHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function loadBookings() {
+      const statusEl = document.getElementById('status');
+      const errorEl = document.getElementById('errorMsg');
+      const content = document.getElementById('content');
+
+      try {
+        const data = await apiFetch('/bookings/mine');
+        statusEl.textContent = '';
+
+        if (!data || data.length === 0) {
+          content.textContent = 'No bookings yet.';
+          return;
+        }
+
+        let html = '<table><thead><tr>' +
+          '<th>Restaurant</th>' +
+          '<th>Group type</th>' +
+          '<th>Party size</th>' +
+          '<th>Status</th>' +
+          '<th>Role</th>' +
+          '<th>Wait p50</th>' +
+          '<th>Eat p50</th>' +
+          '<th>Created</th>' +
+          '<th>Details</th>' +
+          '</tr></thead><tbody>';
+
+        data.forEach(function(b) {
+          html += '<tr>' +
+            '<td>' + escHtml(b.restaurant) + '</td>' +
+            '<td>' + escHtml(b.group_type) + '</td>' +
+            '<td>' + (b.party_size || '') + '</td>' +
+            '<td>' + escHtml(b.status) + '</td>' +
+            '<td>' + escHtml(b.role) + '</td>' +
+            '<td>' + (b.pred_wait_p50 != null ? b.pred_wait_p50 + ' min' : '') + '</td>' +
+            '<td>' + (b.pred_eat_p50 != null ? b.pred_eat_p50 + ' min' : '') + '</td>' +
+            '<td>' + escHtml(b.created_at) + '</td>' +
+            '<td><a href="booking.html?id=' + b.booking_id + '">Details</a></td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table>';
+        content.innerHTML = html;
+      } catch (err) {
+        statusEl.textContent = '';
+        errorEl.textContent = err.message;
+      }
+    }
+
+    loadBookings();
+  </script>
+</body>
+</html>

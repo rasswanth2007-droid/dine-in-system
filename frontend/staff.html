@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – Staff</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="restaurants.html">Restaurants</a>
+      <a href="mybookings.html">My Bookings</a>
+      <a href="staff.html">Staff</a>
+      <a href="stats.html">Stats</a>
+    </nav>
+
+    <h1>Staff Panel</h1>
+
+    <form id="staffForm" style="margin-bottom:1rem;">
+      <label for="staffKeyInput">Staff key</label>
+      <input type="password" id="staffKeyInput" placeholder="Enter staff key" autocomplete="off">
+
+      <label for="restaurantSelect">Restaurant</label>
+      <select id="restaurantSelect">
+        <option value="">Loading restaurants...</option>
+      </select>
+
+      <button type="submit">Load queue</button>
+    </form>
+    <p class="error" id="errorMsg"></p>
+
+    <div id="queueContainer"></div>
+    <div id="finishMsg" class="info"></div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    let staffKey = '';
+
+    function escHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function staffFetch(path, opts) {
+      opts = opts || {};
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Staff-Key': staffKey,
+        ...(opts.headers || {})
+      };
+      const res = await fetch(API + path, { ...opts, headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    // Load restaurants for dropdown (no auth needed)
+    async function loadRestaurantOptions() {
+      const select = document.getElementById('restaurantSelect');
+      try {
+        const data = await apiFetch('/restaurants');
+        select.innerHTML = '';
+        if (!data || data.length === 0) {
+          const opt = document.createElement('option');
+          opt.textContent = 'No restaurants found';
+          select.appendChild(opt);
+          return;
+        }
+        data.forEach(function(r) {
+          const opt = document.createElement('option');
+          opt.value = r.restaurant_id;
+          opt.textContent = r.name + ' (' + r.city + ')';
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        select.innerHTML = '<option>Error loading restaurants</option>';
+      }
+    }
+
+    async function loadQueue(restaurantId) {
+      const errorEl = document.getElementById('errorMsg');
+      const container = document.getElementById('queueContainer');
+      const finishMsg = document.getElementById('finishMsg');
+      errorEl.textContent = '';
+      finishMsg.textContent = '';
+      container.textContent = 'Loading...';
+
+      try {
+        const data = await staffFetch('/staff/queue?restaurant_id=' + restaurantId);
+        container.innerHTML = '';
+
+        if (!data || data.length === 0) {
+          container.textContent = 'No bookings in queue.';
+          return;
+        }
+
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr>' +
+          '<th>ID</th>' +
+          '<th>Restaurant</th>' +
+          '<th>Group type</th>' +
+          '<th>Party size</th>' +
+          '<th>Status</th>' +
+          '<th>Waiting</th>' +
+          '<th>Action</th>' +
+          '</tr></thead>';
+
+        const tbody = document.createElement('tbody');
+
+        data.forEach(function(b) {
+          const tr = document.createElement('tr');
+          let actionHtml = '';
+          let actionCell = null;
+
+          tr.innerHTML =
+            '<td>' + escHtml(b.booking_id || b.id) + '</td>' +
+            '<td>' + escHtml(b.restaurant) + '</td>' +
+            '<td>' + escHtml(b.group_type) + '</td>' +
+            '<td>' + (b.party_size || '') + '</td>' +
+            '<td>' + escHtml(b.status) + '</td>' +
+            '<td>' + (b.waiting != null ? b.waiting : '') + '</td>' +
+            '<td></td>';
+
+          actionCell = tr.querySelector('td:last-child');
+
+          const bid = b.booking_id || b.id;
+
+          if (b.status === 'confirmed') {
+            const seatBtn = document.createElement('button');
+            seatBtn.type = 'button';
+            seatBtn.textContent = 'Seat';
+            seatBtn.addEventListener('click', async function() {
+              errorEl.textContent = '';
+              try {
+                await staffFetch('/staff/bookings/' + bid + '/seat', { method: 'POST' });
+                await loadQueue(restaurantId);
+              } catch (err) {
+                errorEl.textContent = err.message;
+              }
+            });
+            actionCell.appendChild(seatBtn);
+          } else if (b.status === 'seated') {
+            const finishBtn = document.createElement('button');
+            finishBtn.type = 'button';
+            finishBtn.textContent = 'Finish';
+            finishBtn.addEventListener('click', async function() {
+              errorEl.textContent = '';
+              try {
+                const result = await staffFetch('/staff/bookings/' + bid + '/finish', { method: 'POST' });
+                let msg = 'Booking #' + bid + ' finished.';
+                if (result) {
+                  if (result.actual_wait_min != null) msg += ' Actual wait: ' + result.actual_wait_min + ' min.';
+                  if (result.pred_wait_p50 != null) msg += ' Predicted wait: ' + result.pred_wait_p50 + ' min.';
+                  if (result.actual_eat_min != null) msg += ' Actual eating: ' + result.actual_eat_min + ' min.';
+                  if (result.pred_eat_p50 != null) msg += ' Predicted eating: ' + result.pred_eat_p50 + ' min.';
+                }
+                finishMsg.textContent = msg;
+                await loadQueue(restaurantId);
+              } catch (err) {
+                errorEl.textContent = err.message;
+              }
+            });
+            actionCell.appendChild(finishBtn);
+          }
+
+          tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        container.appendChild(table);
+      } catch (err) {
+        container.textContent = '';
+        errorEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('staffForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      staffKey = document.getElementById('staffKeyInput').value;
+      const restaurantId = document.getElementById('restaurantSelect').value;
+      if (!restaurantId) {
+        document.getElementById('errorMsg').textContent = 'Please select a restaurant.';
+        return;
+      }
+      await loadQueue(restaurantId);
+    });
+
+    loadRestaurantOptions();
+  </script>
+</body>
+</html>

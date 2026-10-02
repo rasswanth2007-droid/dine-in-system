@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – Login / Register</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="restaurants.html">Restaurants</a>
+      <a href="mybookings.html">My Bookings</a>
+      <a href="staff.html">Staff</a>
+      <a href="stats.html">Stats</a>
+    </nav>
+
+    <h1>Dine-In Booking</h1>
+
+    <div style="display:flex; flex-wrap:wrap; gap:2rem;">
+      <!-- Login -->
+      <div>
+        <h2>Login</h2>
+        <form id="loginForm">
+          <label for="loginPhone">Phone</label>
+          <input type="tel" id="loginPhone" name="phone" required>
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" name="password" required>
+          <button type="submit">Login</button>
+        </form>
+        <p class="error" id="loginError"></p>
+      </div>
+
+      <!-- Register -->
+      <div>
+        <h2>Register</h2>
+        <form id="registerForm">
+          <label for="regName">Name</label>
+          <input type="text" id="regName" name="name" required>
+          <label for="regPhone">Phone</label>
+          <input type="tel" id="regPhone" name="phone" required>
+          <label for="regPassword">Password</label>
+          <input type="password" id="regPassword" name="password" required>
+          <button type="submit">Register</button>
+        </form>
+        <p class="error" id="registerError"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function saveAndRedirect(data) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user_id', String(data.user_id));
+      localStorage.setItem('name', data.name);
+      window.location.href = 'restaurants.html';
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      document.getElementById('loginError').textContent = '';
+      const phone = document.getElementById('loginPhone').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      try {
+        const data = await apiFetch('/login', {
+          method: 'POST',
+          body: JSON.stringify({ phone, password })
+        });
+        saveAndRedirect(data);
+      } catch (err) {
+        document.getElementById('loginError').textContent = err.message;
+      }
+    });
+
+    document.getElementById('registerForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      document.getElementById('registerError').textContent = '';
+      const name = document.getElementById('regName').value.trim();
+      const phone = document.getElementById('regPhone').value.trim();
+      const password = document.getElementById('regPassword').value;
+      try {
+        const data = await apiFetch('/register', {
+          method: 'POST',
+          body: JSON.stringify({ name, phone, password })
+        });
+        saveAndRedirect(data);
+      } catch (err) {
+        document.getElementById('registerError').textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

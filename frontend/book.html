@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – Book a Table</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="restaurants.html">Restaurants</a>
+      <a href="mybookings.html">My Bookings</a>
+      <a href="staff.html">Staff</a>
+      <a href="stats.html">Stats</a>
+    </nav>
+
+    <h1>Book a Table</h1>
+
+    <!-- Step 1: Group type -->
+    <fieldset>
+      <legend><strong>Step 1: Who are you dining with?</strong></legend>
+      <label><input type="radio" name="group_type" value="friends" required> Friends</label><br>
+      <label><input type="radio" name="group_type" value="colleagues"> Colleagues</label><br>
+      <label><input type="radio" name="group_type" value="family"> Family</label>
+    </fieldset>
+
+    <!-- Step 2: Party size -->
+    <div class="info">
+      <label for="partySize"><strong>Step 2: Total party size (including you)</strong></label><br>
+      <input type="number" id="partySize" min="1" max="30" value="1" style="width:100px;">
+    </div>
+
+    <!-- Step 3: Member phones -->
+    <div class="info">
+      <strong>Step 3: Add friends' phone numbers</strong>
+      <p>Friends who also use the app will see this booking.</p>
+      <div id="phoneInputs"></div>
+      <button type="button" id="addFriendBtn">Add another friend</button>
+      <span id="contactsPickerSection" style="display:none;">
+        &nbsp;<button type="button" id="pickContactsBtn">Pick from contacts</button>
+      </span>
+    </div>
+
+    <!-- Check estimate -->
+    <div class="info">
+      <button type="button" id="checkEstimateBtn">Check estimate</button>
+      <div id="predictionDiv"></div>
+    </div>
+
+    <!-- Confirm booking -->
+    <div class="info">
+      <button type="button" id="confirmBtn">Confirm booking</button>
+    </div>
+
+    <p class="error" id="errorMsg"></p>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    requireLogin();
+
+    const params = new URLSearchParams(location.search);
+    const restaurantId = params.get('restaurant_id');
+
+    if (!restaurantId) {
+      document.getElementById('errorMsg').textContent = 'No restaurant selected. Go back and choose one.';
+    }
+
+    // Show contacts picker if API is available
+    if (navigator.contacts && navigator.contacts.select) {
+      document.getElementById('contactsPickerSection').style.display = '';
+    }
+
+    function getPartySize() {
+      return parseInt(document.getElementById('partySize').value, 10) || 1;
+    }
+
+    function renderPhoneInputs() {
+      const container = document.getElementById('phoneInputs');
+      const partySize = getPartySize();
+      const maxFriends = partySize - 1;
+      const existing = container.querySelectorAll('input[type="tel"]');
+
+      // Remove excess inputs
+      while (container.querySelectorAll('input[type="tel"]').length > maxFriends) {
+        const inputs = container.querySelectorAll('.phone-row');
+        container.removeChild(inputs[inputs.length - 1]);
+      }
+
+      // Update add button visibility
+      const currentCount = container.querySelectorAll('input[type="tel"]').length;
+      document.getElementById('addFriendBtn').style.display = (maxFriends > 0 && currentCount < maxFriends) ? '' : 'none';
+    }
+
+    function addPhoneInput(value) {
+      const container = document.getElementById('phoneInputs');
+      const partySize = getPartySize();
+      const maxFriends = partySize - 1;
+      const currentCount = container.querySelectorAll('input[type="tel"]').length;
+      if (currentCount >= maxFriends) return;
+
+      const idx = currentCount + 1;
+      const row = document.createElement('div');
+      row.className = 'phone-row';
+      row.style.marginBottom = '0.3rem';
+
+      const lbl = document.createElement('label');
+      lbl.textContent = 'Friend ' + idx + ' phone:';
+      lbl.style.fontWeight = 'normal';
+
+      const inp = document.createElement('input');
+      inp.type = 'tel';
+      inp.style.width = '220px';
+      inp.style.marginLeft = '0.5rem';
+      if (value) inp.value = value;
+
+      row.appendChild(lbl);
+      row.appendChild(inp);
+      container.appendChild(row);
+
+      // Update add button visibility
+      const newCount = container.querySelectorAll('input[type="tel"]').length;
+      document.getElementById('addFriendBtn').style.display = (newCount < maxFriends) ? '' : 'none';
+    }
+
+    document.getElementById('partySize').addEventListener('change', renderPhoneInputs);
+    document.getElementById('partySize').addEventListener('input', renderPhoneInputs);
+
+    document.getElementById('addFriendBtn').addEventListener('click', function() {
+      addPhoneInput('');
+    });
+
+    document.getElementById('pickContactsBtn').addEventListener('click', async function() {
+      try {
+        const contacts = await navigator.contacts.select(['tel'], { multiple: true });
+        const container = document.getElementById('phoneInputs');
+        // Clear existing inputs first
+        container.innerHTML = '';
+        contacts.forEach(function(contact) {
+          if (contact.tel && contact.tel.length > 0) {
+            addPhoneInput(contact.tel[0]);
+          }
+        });
+        renderPhoneInputs();
+      } catch (err) {
+        document.getElementById('errorMsg').textContent = 'Could not pick contacts: ' + err.message;
+      }
+    });
+
+    function getGroupType() {
+      const radios = document.querySelectorAll('input[name="group_type"]');
+      for (let r of radios) {
+        if (r.checked) return r.value;
+      }
+      return null;
+    }
+
+    function getMemberPhones() {
+      const inputs = document.querySelectorAll('#phoneInputs input[type="tel"]');
+      const phones = [];
+      inputs.forEach(function(inp) {
+        const v = inp.value.trim();
+        if (v) phones.push(v);
+      });
+      return phones;
+    }
+
+    document.getElementById('checkEstimateBtn').addEventListener('click', async function() {
+      const predDiv = document.getElementById('predictionDiv');
+      const errorEl = document.getElementById('errorMsg');
+      errorEl.textContent = '';
+      const groupType = getGroupType();
+      const partySize = getPartySize();
+
+      if (!groupType) {
+        errorEl.textContent = 'Please select a group type.';
+        return;
+      }
+      if (!restaurantId) {
+        errorEl.textContent = 'No restaurant selected.';
+        return;
+      }
+
+      predDiv.textContent = 'Loading...';
+      try {
+        const data = await apiFetch('/predict?restaurant_id=' + restaurantId + '&party_size=' + partySize + '&group_type=' + groupType);
+        predDiv.innerHTML =
+          '<p><strong>Expected seating time:</strong> ' + escHtml(data.expected_seat_time) + '</p>' +
+          '<p><strong>Wait range:</strong> ' + (data.wait_min ? data.wait_min.p10 + '–' + data.wait_min.p90 : '?') + ' min</p>' +
+          '<p><strong>Expected eating time:</strong> ' + (data.eat_min_p50 || '?') + ' min</p>' +
+          '<p><strong>Expected finish time:</strong> ' + escHtml(data.expected_finish_time) + '</p>' +
+          '<p><strong>Parties ahead:</strong> ' + (data.parties_ahead != null ? data.parties_ahead : '?') + '</p>';
+      } catch (err) {
+        predDiv.textContent = '';
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('confirmBtn').addEventListener('click', async function() {
+      const errorEl = document.getElementById('errorMsg');
+      errorEl.textContent = '';
+      const groupType = getGroupType();
+      const partySize = getPartySize();
+      const members = getMemberPhones();
+
+      if (!groupType) {
+        errorEl.textContent = 'Please select a group type.';
+        return;
+      }
+      if (!restaurantId) {
+        errorEl.textContent = 'No restaurant selected.';
+        return;
+      }
+
+      try {
+        const data = await apiFetch('/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            restaurant_id: parseInt(restaurantId, 10),
+            group_type: groupType,
+            party_size: partySize,
+            members: members
+          })
+        });
+        window.location.href = 'booking.html?id=' + data.booking_id;
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    function escHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Initialize
+    renderPhoneInputs();
+  </script>
+</body>
+</html>

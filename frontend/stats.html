@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – Stats</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="restaurants.html">Restaurants</a>
+      <a href="mybookings.html">My Bookings</a>
+      <a href="staff.html">Staff</a>
+      <a href="stats.html">Stats</a>
+    </nav>
+
+    <h1>Model Stats</h1>
+
+    <p id="status">Loading...</p>
+    <p class="error" id="errorMsg"></p>
+
+    <div id="content"></div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    const METRICS = [
+      {
+        key: 'real_visits',
+        label: 'Real Visits',
+        explanation: 'Number of real (non-synthetic) visits used for model accuracy.'
+      },
+      {
+        key: 'wait_mae_min',
+        label: 'Wait MAE (min)',
+        explanation: 'Mean absolute error of wait time predictions in minutes.'
+      },
+      {
+        key: 'wait_baseline_mae_min',
+        label: 'Wait Baseline MAE (min)',
+        explanation: 'Baseline MAE (simple average) for comparison.'
+      },
+      {
+        key: 'wait_interval_coverage',
+        label: 'Wait Interval Coverage',
+        explanation: 'How often the actual wait fell within the p10–p90 range.'
+      },
+      {
+        key: 'eat_mae_min',
+        label: 'Eat MAE (min)',
+        explanation: 'Mean absolute error of eating duration predictions in minutes.'
+      }
+    ];
+
+    async function loadStats() {
+      const statusEl = document.getElementById('status');
+      const errorEl = document.getElementById('errorMsg');
+      const content = document.getElementById('content');
+
+      try {
+        const data = await apiFetch('/stats');
+        statusEl.textContent = '';
+
+        if (data.note) {
+          content.textContent = data.note;
+          return;
+        }
+
+        let html = '<table><thead><tr><th>Metric</th><th>Value</th><th>Explanation</th></tr></thead><tbody>';
+        METRICS.forEach(function(m) {
+          const val = data[m.key] != null ? data[m.key] : 'N/A';
+          html += '<tr><td>' + m.label + '</td><td>' + val + '</td><td>' + m.explanation + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        content.innerHTML = html;
+      } catch (err) {
+        statusEl.textContent = '';
+        errorEl.textContent = err.message;
+      }
+    }
+
+    loadStats();
+  </script>
+</body>
+</html>
