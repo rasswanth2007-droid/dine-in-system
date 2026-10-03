@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In – Hotel Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.25rem; }
+    .kpi-val  { font-size: 2rem; font-weight: 700; color: var(--accent2); line-height: 1; }
+    .kpi-label{ font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .queue-row td { vertical-align: middle; }
+    .queue-row.seated td:first-child { border-left: 3px solid var(--green); }
+    .queue-row.confirmed td:first-child { border-left: 3px solid #63b3ed; }
+
+    .limit-bar {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem; flex-wrap: wrap;
+    }
+    .limit-bar label { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
+    .limit-bar input {
+      width: 70px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); padding: 0.4rem 0.6rem;
+      font-size: 0.95rem; outline: none; font-family: inherit;
+    }
+    .limit-bar input:focus { border-color: var(--accent); }
+
+    .finish-result {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 0.75rem 1rem;
+      font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;
+    }
+    .finish-result strong { color: var(--text); }
+  </style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<div class="page-wrap">
+  <div class="page-header">
+    <h1 id="hotelTitle">Dashboard</h1>
+    <p id="hotelSubtitle">Live queue management</p>
+  </div>
+
+  <div class="alert alert-error"   id="errorMsg"></div>
+  <div class="alert alert-success" id="successMsg"></div>
+
+  <!-- KPI strip -->
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val" id="kpiWaiting">—</div><div class="kpi-label">Waiting</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiSeated">—</div><div class="kpi-label">Seated</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiFree">—</div><div class="kpi-label">Free Tables</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiLimit" style="color:var(--yellow);">—</div><div class="kpi-label">Queue Limit</div></div>
+  </div>
+
+  <!-- Queue limit control -->
+  <div class="limit-bar">
+    <label for="queueLimitInput">Max queue size</label>
+    <input type="number" id="queueLimitInput" min="0" max="200" placeholder="e.g. 20">
+    <button class="btn btn-secondary btn-sm" id="setLimitBtn">Set limit</button>
+    <span style="font-size:0.8rem; color:var(--text-dim); margin-left:auto;">
+      New bookings are blocked once the waiting queue hits this number. Set 0 to disable.
+    </span>
+  </div>
+
+  <!-- Queue table -->
+  <div class="card" style="padding:0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid var(--border);">
+      <div class="card-title" style="margin-bottom:0;">Live Queue</div>
+      <button class="btn btn-secondary btn-sm" id="refreshBtn">↻ Refresh</button>
+    </div>
+    <p class="loading" id="loadingMsg" style="padding:1.5rem 1.25rem;">Loading queue…</p>
+    <div id="queueContainer"></div>
+  </div>
+
+  <div id="finishResultArea"></div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  requireHotel();
+  buildNav();
+
+  const hotelId   = localStorage.getItem('hotel_id');
+  const hotelName = localStorage.getItem('hotel_name') || 'Your Restaurant';
+
+  document.getElementById('hotelTitle').textContent    = hotelName;
+  document.getElementById('hotelSubtitle').textContent = 'Live queue · Restaurant #' + hotelId;
+
+  /* ── Queue limit (stored locally — no API for it yet) ── */
+  const LIMIT_KEY = 'queue_limit_' + hotelId;
+  let queueLimit  = parseInt(localStorage.getItem(LIMIT_KEY) || '0', 10);
+
+  function renderLimit() {
+    document.getElementById('kpiLimit').textContent      = queueLimit > 0 ? queueLimit : '∞';
+    document.getElementById('queueLimitInput').value     = queueLimit || '';
+  }
+  renderLimit();
+
+  document.getElementById('setLimitBtn').addEventListener('click', () => {
+    const v = parseInt(document.getElementById('queueLimitInput').value, 10);
+    queueLimit = isNaN(v) || v < 0 ? 0 : v;
+    localStorage.setItem(LIMIT_KEY, queueLimit);
+    renderLimit();
+    showAlert(document.getElementById('successMsg'),
+      queueLimit > 0 ? `Queue limit set to ${queueLimit}.` : 'Queue limit removed.', 'success');
+  });
+
+  /* ── Load queue ── */
+  async function loadQueue() {
+    const errorEl   = document.getElementById('errorMsg');
+    const loadingEl = document.getElementById('loadingMsg');
+    const container = document.getElementById('queueContainer');
+    clearAlert(errorEl);
+
+    try {
+      const data = await hotelFetch('/staff/queue?restaurant_id=' + hotelId);
+
+      loadingEl.textContent = '';
+
+      const waiting  = (data || []).filter(b => b.status === 'confirmed').length;
+      const seated   = (data || []).filter(b => b.status === 'seated').length;
+
+      /* KPI update */
+      document.getElementById('kpiWaiting').textContent = waiting;
+      document.getElementById('kpiSeated').textContent  = seated;
+
+      /* free tables: fetch restaurant list for total */
+      apiFetch('/restaurants').then(rests => {
+        const r = rests.find(x => String(x.restaurant_id) === String(hotelId));
+        if (r) document.getElementById('kpiFree').textContent = Math.max(0, (r.tables || 0) - seated);
+      }).catch(() => {});
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p style="padding:1.5rem 1.25rem; color:var(--text-muted);">Queue is empty.</p>';
+        return;
+      }
+
+      /* queue-limit warning banner */
+      let limitBanner = '';
+      if (queueLimit > 0 && waiting >= queueLimit) {
+        limitBanner = `<div class="alert show alert-error" style="margin:0.75rem 1.25rem;">
+          ⚠ Queue limit reached (${waiting}/${queueLimit}). New bookings for this restaurant are being blocked.
+        </div>`;
+      }
+
+      let html = `${limitBanner}<div class="table-wrap" style="border:none;border-radius:0;">
+        <table><thead><tr>
+          <th>#</th><th>Host</th><th>Group</th><th>Party</th>
+          <th>Status</th><th>Booked at</th><th>Action</th>
+        </tr></thead><tbody id="queueBody"></tbody></table></div>`;
+
+      container.innerHTML = html;
+      const tbody = document.getElementById('queueBody');
+
+      data.forEach(b => {
+        const tr = document.createElement('tr');
+        tr.className = 'queue-row ' + (b.status || '');
+        const bookedAt = b.created_at ? b.created_at.replace('T',' ').slice(0,16) : '—';
+        tr.innerHTML = `
+          <td><strong>#${escHtml(b.booking_id)}</strong></td>
+          <td>${escHtml(b.host)}</td>
+          <td style="text-transform:capitalize">${escHtml(b.group_type)}</td>
+          <td>${b.party_size || '—'}</td>
+          <td>${badge(b.status)}</td>
+          <td style="font-size:0.8rem;color:var(--text-muted);">${escHtml(bookedAt)}</td>
+          <td id="act-${b.booking_id}"></td>`;
+        tbody.appendChild(tr);
+
+        const cell = document.getElementById('act-' + b.booking_id);
+
+        if (b.status === 'confirmed') {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-success btn-sm';
+          btn.textContent = 'Seat';
+          btn.addEventListener('click', async () => {
+            clearAlert(errorEl);
+            btn.textContent = 'Seating…';
+            try {
+              await hotelFetch('/staff/bookings/' + b.booking_id + '/seat', { method: 'POST' });
+              loadQueue();
+            } catch(err) { showAlert(errorEl, err.message); btn.textContent = 'Seat'; }
+          });
+          cell.appendChild(btn);
+
+        } else if (b.status === 'seated') {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-secondary btn-sm';
+          btn.textContent = 'Finish';
+          btn.addEventListener('click', async () => {
+            clearAlert(errorEl);
+            btn.textContent = 'Finishing…';
+            try {
+              const result = await hotelFetch('/staff/bookings/' + b.booking_id + '/finish', { method: 'POST' });
+              showFinishResult(b.booking_id, result);
+              loadQueue();
+            } catch(err) { showAlert(errorEl, err.message); btn.textContent = 'Finish'; }
+          });
+          cell.appendChild(btn);
+        }
+      });
+
+    } catch(err) {
+      loadingEl.textContent = '';
+      showAlert(errorEl, err.message);
+    }
+  }
+
+  function showFinishResult(bid, r) {
+    const area = document.getElementById('finishResultArea');
+    const card = document.createElement('div');
+    card.className = 'finish-result';
+    card.style.marginTop = '1rem';
+    const waitDiff = r.actual_wait_min != null && r.predicted_wait_p50 != null
+      ? Math.round(r.actual_wait_min - r.predicted_wait_p50) : null;
+    const eatDiff  = r.duration_min != null && r.predicted_eat_p50 != null
+      ? Math.round(r.duration_min - r.predicted_eat_p50) : null;
+    card.innerHTML = `
+      <strong>Booking #${bid} finished</strong><br>
+      Actual wait: <strong>${r.actual_wait_min != null ? r.actual_wait_min + ' min' : '—'}</strong>
+      ${waitDiff != null ? `<span style="color:${waitDiff>0?'var(--red)':'var(--green)'}">(${waitDiff>0?'+':''}${waitDiff} vs prediction)</span>` : ''}<br>
+      Actual meal: <strong>${r.duration_min != null ? r.duration_min + ' min' : '—'}</strong>
+      ${eatDiff  != null ? `<span style="color:${eatDiff>0?'var(--red)':'var(--green)'}">(${eatDiff>0?'+':''}${eatDiff} vs prediction)</span>` : ''}
+      <span style="float:right;cursor:pointer;color:var(--text-dim);" onclick="this.parentElement.remove()">✕</span>`;
+    area.prepend(card);
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadQueue);
+  loadQueue();
+  /* auto-refresh every 30s */
+  setInterval(loadQueue, 30000);
+</script>
+</body>
+</html>

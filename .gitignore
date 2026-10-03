@@ -1,0 +1,13 @@
+# SQLite database (contains user data — do not commit)
+dinein.sqlite
+*.sqlite
+*.db
+
+# R temp files
+.Rhistory
+.RData
+.Rproj.user/
+
+# OS
+.DS_Store
+Thumbs.db

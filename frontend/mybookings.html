@@ -1,91 +1,189 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dine-In – My Bookings</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .booking-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.85rem;
+      overflow: hidden;
+    }
+    .booking-summary {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .booking-summary:hover { background: rgba(255,255,255,0.03); }
+    .bs-main { flex: 1; min-width: 0; }
+    .bs-restaurant { font-weight: 700; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bs-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.35rem; align-items: center; }
+    .bs-time { font-size: 0.82rem; color: var(--text-muted); background: var(--surface2); padding: 0.15rem 0.5rem; border-radius: 99px; border: 1px solid var(--border); }
+    .bs-arrow {
+      flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+      background: var(--surface2); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; color: var(--text-muted);
+    }
+    .booking-card.open .bs-arrow { background: var(--accent-glow); color: var(--accent2); border-color: var(--accent); }
+    .booking-detail {
+      display: none;
+      padding: 0 1.25rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .booking-card.open .booking-detail { display: block; }
+    .detail-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0.6rem 1.5rem; margin-top: 1rem;
+    }
+    .dg-item .dg-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 0.15rem; }
+    .dg-item .dg-value { font-size: 0.9rem; font-weight: 500; color: var(--text); }
+    .detail-actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+    @media (max-width: 480px) { .detail-grid { grid-template-columns: 1fr; } }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="restaurants.html">Restaurants</a>
-      <a href="mybookings.html">My Bookings</a>
-      <a href="staff.html">Staff</a>
-      <a href="stats.html">Stats</a>
-    </nav>
+<nav class="nav"></nav>
 
+<div class="page-wrap">
+  <div class="page-header">
     <h1>My Bookings</h1>
-
-    <p id="status">Loading...</p>
-    <p class="error" id="errorMsg"></p>
-
-    <div id="content"></div>
+    <p id="greeting"></p>
   </div>
 
-  <script src="app.js"></script>
-  <script>
-    requireLogin();
+  <div class="alert alert-error" id="errorMsg"></div>
+  <p class="loading" id="loadingMsg">Loading bookings…</p>
+  <div id="content"></div>
+</div>
 
-    function escHtml(str) {
-      if (str == null) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
+<script src="app.js"></script>
+<script>
+  requireUser();
+  buildNav();
+  const user = getUser();
+  if (user.name) document.getElementById('greeting').textContent = 'Welcome back, ' + user.name;
 
-    async function loadBookings() {
-      const statusEl = document.getElementById('status');
-      const errorEl = document.getElementById('errorMsg');
-      const content = document.getElementById('content');
+  const GROUP_ICON = { friends: '👥', colleagues: '💼', family: '👨‍👩‍👧' };
 
-      try {
-        const data = await apiFetch('/bookings/mine');
-        statusEl.textContent = '';
+  async function load() {
+    const errorEl   = document.getElementById('errorMsg');
+    const loadingEl = document.getElementById('loadingMsg');
+    const content   = document.getElementById('content');
+    try {
+      const data = await apiFetch('/bookings/mine');
+      loadingEl.textContent = '';
 
-        if (!data || data.length === 0) {
-          content.textContent = 'No bookings yet.';
-          return;
+      if (!data || data.length === 0) {
+        content.innerHTML = `<div class="card" style="text-align:center;padding:2.5rem 1rem;color:var(--text-muted);">
+          No bookings yet.
+          <a href="restaurants.html" class="btn btn-secondary btn-sm" style="margin-left:0.75rem;">Find a restaurant →</a>
+        </div>`;
+        return;
+      }
+
+      const wrap = document.createElement('div');
+
+      data.forEach(b => {
+        const card = document.createElement('div');
+        card.className = 'booking-card';
+
+        /* ── What to show as "expected time" — NO raw prediction numbers ── */
+        let timeLabel = '';
+        if (b.status === 'confirmed') {
+          /* We only have p50 wait from the list endpoint — turn into clock time estimate */
+          if (b.pred_wait_p50 != null) {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + Math.round(b.pred_wait_p50));
+            const hh = String(now.getHours()).padStart(2,'0');
+            const mm = String(now.getMinutes()).padStart(2,'0');
+            timeLabel = '🕐 Seat ~' + hh + ':' + mm;
+          }
+        } else if (b.status === 'seated') {
+          timeLabel = '🍽 Seated now';
+        } else if (b.status === 'completed') {
+          timeLabel = '✓ Done';
+        } else if (b.status === 'cancelled') {
+          timeLabel = '✕ Cancelled';
         }
 
-        let html = '<table><thead><tr>' +
-          '<th>Restaurant</th>' +
-          '<th>Group type</th>' +
-          '<th>Party size</th>' +
-          '<th>Status</th>' +
-          '<th>Role</th>' +
-          '<th>Wait p50</th>' +
-          '<th>Eat p50</th>' +
-          '<th>Created</th>' +
-          '<th>Details</th>' +
-          '</tr></thead><tbody>';
+        const created = b.created_at ? b.created_at.replace('T',' ').slice(0,16) : '';
+        const gIcon   = GROUP_ICON[b.group_type] || '';
 
-        data.forEach(function(b) {
-          html += '<tr>' +
-            '<td>' + escHtml(b.restaurant) + '</td>' +
-            '<td>' + escHtml(b.group_type) + '</td>' +
-            '<td>' + (b.party_size || '') + '</td>' +
-            '<td>' + escHtml(b.status) + '</td>' +
-            '<td>' + escHtml(b.role) + '</td>' +
-            '<td>' + (b.pred_wait_p50 != null ? b.pred_wait_p50 + ' min' : '') + '</td>' +
-            '<td>' + (b.pred_eat_p50 != null ? b.pred_eat_p50 + ' min' : '') + '</td>' +
-            '<td>' + escHtml(b.created_at) + '</td>' +
-            '<td><a href="booking.html?id=' + b.booking_id + '">Details</a></td>' +
-            '</tr>';
+        /* summary row */
+        const summary = document.createElement('div');
+        summary.className = 'booking-summary';
+        summary.innerHTML = `
+          <div class="bs-main">
+            <div class="bs-restaurant">${escHtml(b.restaurant)}</div>
+            <div class="bs-meta">
+              ${badge(b.status)}
+              ${badge(b.role)}
+              ${timeLabel ? `<span class="bs-time">${escHtml(timeLabel)}</span>` : ''}
+            </div>
+          </div>
+          <div class="bs-arrow">▼</div>`;
+
+        /* detail panel — NO raw predicted minutes shown */
+        const detail = document.createElement('div');
+        detail.className = 'booking-detail';
+        detail.innerHTML = `
+          <div class="detail-grid">
+            <div class="dg-item">
+              <div class="dg-label">Group type</div>
+              <div class="dg-value">${gIcon} ${escHtml(b.group_type)}</div>
+            </div>
+            <div class="dg-item">
+              <div class="dg-label">Party size</div>
+              <div class="dg-value">${b.party_size || '—'} people</div>
+            </div>
+            <div class="dg-item">
+              <div class="dg-label">Booking</div>
+              <div class="dg-value">#${b.booking_id}</div>
+            </div>
+            <div class="dg-item">
+              <div class="dg-label">Booked on</div>
+              <div class="dg-value" style="font-size:0.82rem;color:var(--text-muted);">${escHtml(created)}</div>
+            </div>
+          </div>
+          <div class="detail-actions">
+            <a class="btn btn-secondary btn-sm" href="booking.html?id=${b.booking_id}">Details →</a>
+            ${b.status === 'completed'
+              ? `<a class="btn btn-success btn-sm" href="feedback.html?booking_id=${b.booking_id}">Leave feedback</a>`
+              : ''}
+          </div>`;
+
+        summary.addEventListener('click', () => {
+          const isOpen = card.classList.contains('open');
+          document.querySelectorAll('.booking-card.open').forEach(c => {
+            c.classList.remove('open');
+            c.querySelector('.bs-arrow').textContent = '▼';
+          });
+          if (!isOpen) {
+            card.classList.add('open');
+            card.querySelector('.bs-arrow').textContent = '▲';
+          }
         });
 
-        html += '</tbody></table>';
-        content.innerHTML = html;
-      } catch (err) {
-        statusEl.textContent = '';
-        errorEl.textContent = err.message;
-      }
-    }
+        card.appendChild(summary);
+        card.appendChild(detail);
+        wrap.appendChild(card);
+      });
 
-    loadBookings();
-  </script>
+      content.appendChild(wrap);
+    } catch(err) {
+      loadingEl.textContent = '';
+      showAlert(errorEl, err.message);
+    }
+  }
+
+  load();
+</script>
 </body>
 </html>

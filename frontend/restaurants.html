@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -7,83 +7,62 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="restaurants.html">Restaurants</a>
-      <a href="mybookings.html">My Bookings</a>
-      <a href="staff.html">Staff</a>
-      <a href="stats.html">Stats</a>
-    </nav>
+<nav class="nav"></nav>
 
+<div class="page-wrap">
+  <div class="page-header">
     <h1>Restaurants</h1>
-
-    <p id="status">Loading...</p>
-    <p class="error" id="errorMsg"></p>
-
-    <table id="restaurantTable" style="display:none;">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>City</th>
-          <th>Area</th>
-          <th>Waiting</th>
-          <th>Seated</th>
-          <th>Book</th>
-        </tr>
-      </thead>
-      <tbody id="restaurantBody"></tbody>
-    </table>
+    <p>Pick a spot and book your table</p>
   </div>
 
-  <script src="app.js"></script>
-  <script>
-    requireLogin();
+  <div class="alert alert-error" id="errorMsg"></div>
+  <p class="loading" id="loadingMsg">Loading restaurants...</p>
 
-    async function loadRestaurants() {
-      const statusEl = document.getElementById('status');
-      const errorEl = document.getElementById('errorMsg');
-      const table = document.getElementById('restaurantTable');
-      const tbody = document.getElementById('restaurantBody');
+  <div id="content"></div>
+</div>
 
-      try {
-        const data = await apiFetch('/restaurants');
-        statusEl.textContent = '';
-        if (!data || data.length === 0) {
-          statusEl.textContent = 'No restaurants found.';
-          return;
-        }
-        tbody.innerHTML = '';
-        data.forEach(function(r) {
-          const tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td>' + escHtml(r.name) + '</td>' +
-            '<td>' + escHtml(r.type) + '</td>' +
-            '<td>' + escHtml(r.city) + '</td>' +
-            '<td>' + escHtml(r.area) + '</td>' +
-            '<td>' + (r.waiting || 0) + '</td>' +
-            '<td>' + (r.seated_now || 0) + '</td>' +
-            '<td><a href="book.html?restaurant_id=' + r.restaurant_id + '">Book</a></td>';
-          tbody.appendChild(tr);
-        });
-        table.style.display = '';
-      } catch (err) {
-        statusEl.textContent = '';
-        errorEl.textContent = err.message;
-      }
+<script src="app.js"></script>
+<script>
+  requireUser();
+  buildNav();
+
+  const TYPE_ICON = { mandhi:'🍖', franchise:'🍔', finedine:'🍷', cafe:'☕' };
+
+  async function load() {
+    const errorEl = document.getElementById('errorMsg');
+    const loadingEl = document.getElementById('loadingMsg');
+    const content = document.getElementById('content');
+    try {
+      const data = await apiFetch('/restaurants');
+      loadingEl.textContent = '';
+      if (!data || data.length === 0) { loadingEl.textContent = 'No restaurants found.'; return; }
+
+      let html = '<div class="table-wrap"><table><thead><tr>' +
+        '<th>Restaurant</th><th>Type</th><th>City / Area</th>' +
+        '<th>Waiting</th><th>Seated</th><th></th>' +
+        '</tr></thead><tbody>';
+
+      data.forEach(r => {
+        const icon = TYPE_ICON[r.type] || '🍽';
+        html += `<tr>
+          <td><strong>${escHtml(r.name)}</strong></td>
+          <td>${icon} ${escHtml(r.type)}</td>
+          <td>${escHtml(r.city)}${r.area ? ', ' + escHtml(r.area) : ''}</td>
+          <td>${r.waiting || 0}</td>
+          <td>${r.seated_now || 0}</td>
+          <td><a class="btn btn-secondary btn-sm" href="book.html?restaurant_id=${r.restaurant_id}">Book →</a></td>
+        </tr>`;
+      });
+
+      html += '</tbody></table></div>';
+      content.innerHTML = html;
+    } catch (err) {
+      loadingEl.textContent = '';
+      showAlert(errorEl, err.message);
     }
+  }
 
-    function escHtml(str) {
-      if (str == null) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    loadRestaurants();
-  </script>
+  load();
+</script>
 </body>
 </html>

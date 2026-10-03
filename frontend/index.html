@@ -1,95 +1,240 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dine-In – Login / Register</title>
+  <title>Dine-In – Sign In</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .role-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
+    }
+    .role-card {
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      background: var(--surface2);
+    }
+    .role-card.selected {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+    .role-card .role-icon { font-size: 1.75rem; display: block; margin-bottom: 0.35rem; }
+    .role-card .role-name { font-weight: 700; font-size: 0.95rem; }
+    .role-card .role-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    .auth-panel { display: none; }
+    .auth-panel.active { display: block; }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="restaurants.html">Restaurants</a>
-      <a href="mybookings.html">My Bookings</a>
-      <a href="staff.html">Staff</a>
-      <a href="stats.html">Stats</a>
-    </nav>
+<nav class="nav">
+  <a class="nav-brand" href="index.html">🍽 Dine-In</a>
+</nav>
 
-    <h1>Dine-In Booking</h1>
-
-    <div style="display:flex; flex-wrap:wrap; gap:2rem;">
-      <!-- Login -->
-      <div>
-        <h2>Login</h2>
-        <form id="loginForm">
-          <label for="loginPhone">Phone</label>
-          <input type="tel" id="loginPhone" name="phone" required>
-          <label for="loginPassword">Password</label>
-          <input type="password" id="loginPassword" name="password" required>
-          <button type="submit">Login</button>
-        </form>
-        <p class="error" id="loginError"></p>
-      </div>
-
-      <!-- Register -->
-      <div>
-        <h2>Register</h2>
-        <form id="registerForm">
-          <label for="regName">Name</label>
-          <input type="text" id="regName" name="name" required>
-          <label for="regPhone">Phone</label>
-          <input type="tel" id="regPhone" name="phone" required>
-          <label for="regPassword">Password</label>
-          <input type="password" id="regPassword" name="password" required>
-          <button type="submit">Register</button>
-        </form>
-        <p class="error" id="registerError"></p>
-      </div>
-    </div>
+<div class="page-wrap">
+  <div class="page-header">
+    <h1>Welcome to Dine-In</h1>
+    <p>Smart restaurant booking powered by real-time predictions</p>
   </div>
 
-  <script src="app.js"></script>
-  <script>
-    function saveAndRedirect(data) {
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user_id', String(data.user_id));
-      localStorage.setItem('name', data.name);
+  <!-- Step 1: pick role -->
+  <div class="card" style="max-width:460px;" id="roleStep">
+    <div class="card-title">Who are you?</div>
+    <div class="role-picker">
+      <div class="role-card selected" id="roleUser" onclick="pickRole('user')">
+        <span class="role-icon">🙋</span>
+        <div class="role-name">Customer</div>
+        <div class="role-desc">Browse restaurants &amp; make bookings</div>
+      </div>
+      <div class="role-card" id="roleHotel" onclick="pickRole('hotel')">
+        <span class="role-icon">🏨</span>
+        <div class="role-name">Hotel / Restaurant</div>
+        <div class="role-desc">Manage your queue &amp; bookings</div>
+      </div>
+    </div>
+
+    <!-- ── USER panels ── -->
+    <div id="userPanels" class="auth-panel active">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="ulogin">Sign in</button>
+        <button class="tab-btn" data-tab="uregister">Register</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-ulogin">
+        <div class="alert alert-error" id="uLoginError"></div>
+        <div class="form-group">
+          <label for="uLoginPhone">Phone number</label>
+          <input type="tel" id="uLoginPhone" placeholder="10-digit phone" autocomplete="tel">
+        </div>
+        <div class="form-group">
+          <label for="uLoginPass">Password</label>
+          <input type="password" id="uLoginPass" placeholder="Your password" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary" id="uLoginBtn">Sign in</button>
+      </div>
+
+      <div class="tab-panel" id="tab-uregister">
+        <div class="alert alert-error" id="uRegError"></div>
+        <div class="form-group">
+          <label for="uRegName">Full name</label>
+          <input type="text" id="uRegName" placeholder="Your name" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label for="uRegPhone">Phone number</label>
+          <input type="tel" id="uRegPhone" placeholder="10-digit phone" autocomplete="tel">
+        </div>
+        <div class="form-group">
+          <label for="uRegPass">Password</label>
+          <input type="password" id="uRegPass" placeholder="Min 6 characters" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary" id="uRegBtn">Create account</button>
+      </div>
+    </div>
+
+    <!-- ── HOTEL panels ── -->
+    <div id="hotelPanels" class="auth-panel">
+      <div class="alert alert-info show" style="margin-bottom:1rem;">
+        Use your staff key to sign in. Contact your admin if you don't have one.
+      </div>
+      <div class="alert alert-error" id="hLoginError"></div>
+      <div class="form-group">
+        <label for="hStaffKey">Staff key</label>
+        <input type="password" id="hStaffKey" placeholder="e.g. staff123" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="hRestaurant">Your restaurant</label>
+        <select id="hRestaurant">
+          <option value="">Loading restaurants…</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="hLoginBtn">Sign in as Hotel</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  /* redirect if already logged in */
+  (function() {
+    const role = localStorage.getItem('role');
+    if (role === 'hotel' && localStorage.getItem('staff_key')) { window.location.href = 'hotel.html'; return; }
+    if (role === 'user'  && localStorage.getItem('token'))     { window.location.href = 'restaurants.html'; }
+  })();
+
+  /* load restaurant list for hotel login */
+  apiFetch('/restaurants').then(data => {
+    const sel = document.getElementById('hRestaurant');
+    sel.innerHTML = '<option value="">Select your restaurant</option>';
+    (data || []).forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.restaurant_id;
+      o.textContent = r.name + ' · ' + r.city;
+      sel.appendChild(o);
+    });
+  }).catch(() => {
+    document.getElementById('hRestaurant').innerHTML = '<option value="">Could not load</option>';
+  });
+
+  /* role picker */
+  let currentRole = 'user';
+  function pickRole(r) {
+    currentRole = r;
+    document.getElementById('roleUser').classList.toggle('selected', r === 'user');
+    document.getElementById('roleHotel').classList.toggle('selected', r === 'hotel');
+    document.getElementById('userPanels').classList.toggle('active', r === 'user');
+    document.getElementById('hotelPanels').classList.toggle('active', r === 'hotel');
+  }
+
+  /* tab switcher (user panels) */
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group = btn.closest('.auth-panel');
+      group.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      group.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      group.querySelector('#tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  /* ── User login ── */
+  document.getElementById('uLoginBtn').addEventListener('click', async () => {
+    const errEl = document.getElementById('uLoginError');
+    clearAlert(errEl);
+    const phone    = document.getElementById('uLoginPhone').value.trim();
+    const password = document.getElementById('uLoginPass').value;
+    if (!phone || !password) { showAlert(errEl, 'Phone and password are required.'); return; }
+    const btn = document.getElementById('uLoginBtn');
+    btn.textContent = 'Signing in…';
+    try {
+      const d = await apiFetch('/login', { method: 'POST', body: JSON.stringify({ phone, password }) });
+      localStorage.setItem('token',   d.token);
+      localStorage.setItem('user_id', String(d.user_id));
+      localStorage.setItem('name',    d.name);
+      localStorage.setItem('role',    'user');
       window.location.href = 'restaurants.html';
-    }
+    } catch(err) { showAlert(errEl, err.message); btn.textContent = 'Sign in'; }
+  });
 
-    document.getElementById('loginForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      document.getElementById('loginError').textContent = '';
-      const phone = document.getElementById('loginPhone').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      try {
-        const data = await apiFetch('/login', {
-          method: 'POST',
-          body: JSON.stringify({ phone, password })
-        });
-        saveAndRedirect(data);
-      } catch (err) {
-        document.getElementById('loginError').textContent = err.message;
-      }
-    });
+  /* ── User register ── */
+  document.getElementById('uRegBtn').addEventListener('click', async () => {
+    const errEl = document.getElementById('uRegError');
+    clearAlert(errEl);
+    const name     = document.getElementById('uRegName').value.trim();
+    const phone    = document.getElementById('uRegPhone').value.trim();
+    const password = document.getElementById('uRegPass').value;
+    if (!name || !phone || !password) { showAlert(errEl, 'All fields are required.'); return; }
+    const btn = document.getElementById('uRegBtn');
+    btn.textContent = 'Creating…';
+    try {
+      const d = await apiFetch('/register', { method: 'POST', body: JSON.stringify({ name, phone, password }) });
+      localStorage.setItem('token',   d.token);
+      localStorage.setItem('user_id', String(d.user_id));
+      localStorage.setItem('name',    d.name);
+      localStorage.setItem('role',    'user');
+      window.location.href = 'restaurants.html';
+    } catch(err) { showAlert(errEl, err.message); btn.textContent = 'Create account'; }
+  });
 
-    document.getElementById('registerForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      document.getElementById('registerError').textContent = '';
-      const name = document.getElementById('regName').value.trim();
-      const phone = document.getElementById('regPhone').value.trim();
-      const password = document.getElementById('regPassword').value;
-      try {
-        const data = await apiFetch('/register', {
-          method: 'POST',
-          body: JSON.stringify({ name, phone, password })
+  /* ── Hotel login ── */
+  document.getElementById('hLoginBtn').addEventListener('click', async () => {
+    const errEl = document.getElementById('hLoginError');
+    clearAlert(errEl);
+    const key = document.getElementById('hStaffKey').value.trim();
+    const rid = document.getElementById('hRestaurant').value;
+    const rname = document.getElementById('hRestaurant').selectedOptions[0]?.text || '';
+    if (!key)  { showAlert(errEl, 'Staff key is required.'); return; }
+    if (!rid)  { showAlert(errEl, 'Please select your restaurant.'); return; }
+    const btn = document.getElementById('hLoginBtn');
+    btn.textContent = 'Verifying…';
+    /* verify key by hitting a staff endpoint */
+    try {
+      const headers = { 'X-Staff-Key': key };
+      await fetch(API + '/staff/queue?restaurant_id=' + rid, { headers })
+        .then(async r => {
+          if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'bad staff key'); }
         });
-        saveAndRedirect(data);
-      } catch (err) {
-        document.getElementById('registerError').textContent = err.message;
-      }
-    });
-  </script>
+      localStorage.setItem('staff_key',  key);
+      localStorage.setItem('hotel_id',   rid);
+      localStorage.setItem('hotel_name', rname.split(' ·')[0]);
+      localStorage.setItem('role',       'hotel');
+      window.location.href = 'hotel.html';
+    } catch(err) { showAlert(errEl, err.message); btn.textContent = 'Sign in as Hotel'; }
+  });
+
+  /* Enter key */
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (currentRole === 'hotel') { document.getElementById('hLoginBtn').click(); return; }
+    const activeTab = document.querySelector('#userPanels .tab-panel.active')?.id;
+    if (activeTab === 'tab-ulogin') document.getElementById('uLoginBtn').click();
+    else document.getElementById('uRegBtn').click();
+  });
+</script>
 </body>
 </html>

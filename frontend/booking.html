@@ -3,184 +3,154 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dine-In – Booking Details</title>
+  <title>Dine-In - Booking Details</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="restaurants.html">Restaurants</a>
-      <a href="mybookings.html">My Bookings</a>
-      <a href="staff.html">Staff</a>
-      <a href="stats.html">Stats</a>
-    </nav>
+<nav class="nav"></nav>
 
+<div class="page-wrap">
+  <div class="page-header">
     <h1>Booking Details</h1>
-
-    <p id="status">Loading...</p>
-    <p class="error" id="errorMsg"></p>
-
-    <div id="content"></div>
-
-    <div id="actions" style="margin-top:1rem;"></div>
-
-    <div class="info">
-      <button type="button" onclick="location.reload()">Refresh</button>
-    </div>
+    <p><a href="mybookings.html" style="color:var(--text-muted);font-size:0.875rem;">Back to My Bookings</a></p>
   </div>
 
-  <script src="app.js"></script>
-  <script>
-    requireLogin();
+  <div class="alert alert-error"   id="errorMsg"></div>
+  <div class="alert alert-success" id="successMsg"></div>
+  <p class="loading" id="loadingMsg">Loading booking...</p>
+  <div id="content"></div>
+</div>
 
-    const params = new URLSearchParams(location.search);
-    const bookingId = params.get('id');
-    const currentUserId = localStorage.getItem('user_id');
+<script src="app.js"></script>
+<script>
+  requireUser();
+  buildNav();
 
-    if (!bookingId) {
-      document.getElementById('errorMsg').textContent = 'No booking ID provided.';
-    }
+  const params        = new URLSearchParams(location.search);
+  const bookingId     = params.get('id');
+  const currentUserId = localStorage.getItem('user_id');
 
-    function escHtml(str) {
-      if (str == null) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
+  if (!bookingId) showAlert(document.getElementById('errorMsg'), 'No booking ID provided.');
 
-    async function loadBooking() {
-      const statusEl = document.getElementById('status');
-      const errorEl = document.getElementById('errorMsg');
-      const content = document.getElementById('content');
-      const actionsEl = document.getElementById('actions');
+  async function loadBooking() {
+    const errorEl   = document.getElementById('errorMsg');
+    const successEl = document.getElementById('successMsg');
+    const loadingEl = document.getElementById('loadingMsg');
+    const content   = document.getElementById('content');
+    if (!bookingId) return;
 
-      if (!bookingId) return;
+    try {
+      const data = await apiFetch('/bookings/' + bookingId);
+      loadingEl.textContent = '';
 
-      try {
-        const data = await apiFetch('/bookings/' + bookingId);
-        statusEl.textContent = '';
+      const bk      = data.booking  || {};
+      const members = data.members  || [];
+      const live    = data.live_estimate;
 
-        const booking = data.booking || {};
-        const members = data.members || [];
-        const liveEstimate = data.live_estimate;
-        const eatingForMin = data.eating_for_min;
+      /* Booking info */
+      let html = '<div class="card">' +
+        '<div class="card-title">Booking #' + escHtml(bk.booking_id || bookingId) + '</div>' +
+        '<div class="detail-list">' +
+        '<div class="detail-row"><span class="key">Restaurant</span><span class="val">' + escHtml(bk.restaurant) + '</span></div>' +
+        '<div class="detail-row"><span class="key">Host</span><span class="val">' + escHtml(bk.host) + '</span></div>' +
+        '<div class="detail-row"><span class="key">Party size</span><span class="val">' + (bk.party_size || '-') + '</span></div>' +
+        '<div class="detail-row"><span class="key">Status</span><span class="val">' + badge(bk.status) + '</span></div>' +
+        '</div></div>';
 
-        // Booking info
-        let html = '<h2>Booking #' + escHtml(booking.booking_id || bookingId) + '</h2>';
-        html += '<table><tbody>';
-        html += '<tr><th>Restaurant</th><td>' + escHtml(booking.restaurant || booking.restaurant_name) + '</td></tr>';
-        html += '<tr><th>Group type</th><td>' + escHtml(booking.group_type) + '</td></tr>';
-        html += '<tr><th>Party size</th><td>' + (booking.party_size || '') + '</td></tr>';
-        html += '<tr><th>Status</th><td>' + escHtml(booking.status) + '</td></tr>';
-        html += '</tbody></table>';
-
-        // Member list
-        if (members.length > 0) {
-          html += '<h3>Members</h3>';
-          html += '<table><thead><tr><th>Name / Phone</th><th>Invite Status</th></tr></thead><tbody>';
-          members.forEach(function(m) {
-            const display = m.name ? escHtml(m.name) : ('xxxxxx' + escHtml(m.phone_last4 || ''));
-            html += '<tr><td>' + display + '</td><td>' + escHtml(m.invite_status) + '</td></tr>';
-          });
-          html += '</tbody></table>';
-        }
-
-        // Live estimate while confirmed
-        if (booking.status === 'confirmed' && liveEstimate) {
-          html += '<h3>Live Estimate</h3>';
-          html += '<table><tbody>';
-          if (liveEstimate.wait_min) {
-            html += '<tr><th>Wait range</th><td>' + liveEstimate.wait_min.p10 + '–' + liveEstimate.wait_min.p90 + ' min</td></tr>';
-          }
-          html += '<tr><th>Expected seat time</th><td>' + escHtml(liveEstimate.expected_seat_time) + '</td></tr>';
-          html += '<tr><th>Expected finish time</th><td>' + escHtml(liveEstimate.expected_finish_time) + '</td></tr>';
-          if (liveEstimate.parties_ahead != null) {
-            html += '<tr><th>Parties ahead</th><td>' + liveEstimate.parties_ahead + '</td></tr>';
-          }
-          html += '</tbody></table>';
-        }
-
-        // Eating for X minutes while seated
-        if (booking.status === 'seated' && eatingForMin != null) {
-          html += '<p class="info"><strong>Eating for:</strong> ' + eatingForMin + ' minutes</p>';
-        }
-
-        content.innerHTML = html;
-
-        // Actions
-        actionsEl.innerHTML = '';
-        const isHost = booking.host_id != null && String(booking.host_id) === String(currentUserId);
-
-        // Cancel button for host
-        if (isHost && (booking.status === 'confirmed' || booking.status === 'pending')) {
-          const cancelBtn = document.createElement('button');
-          cancelBtn.type = 'button';
-          cancelBtn.textContent = 'Cancel booking';
-          cancelBtn.addEventListener('click', async function() {
-            errorEl.textContent = '';
-            try {
-              await apiFetch('/bookings/' + bookingId + '/cancel', { method: 'POST' });
-              location.reload();
-            } catch (err) {
-              errorEl.textContent = err.message;
-            }
-          });
-          actionsEl.appendChild(cancelBtn);
-          actionsEl.appendChild(document.createElement('br'));
-        }
-
-        // Accept/Decline for non-host guests when status is pending or confirmed
-        if (!isHost && (booking.status === 'confirmed' || booking.status === 'pending')) {
-          const acceptBtn = document.createElement('button');
-          acceptBtn.type = 'button';
-          acceptBtn.textContent = 'Accept invite';
-          acceptBtn.style.marginRight = '0.5rem';
-          acceptBtn.addEventListener('click', async function() {
-            errorEl.textContent = '';
-            try {
-              await apiFetch('/bookings/' + bookingId + '/respond', {
-                method: 'POST',
-                body: JSON.stringify({ action: 'accept' })
-              });
-              location.reload();
-            } catch (err) {
-              errorEl.textContent = err.message;
-            }
-          });
-
-          const declineBtn = document.createElement('button');
-          declineBtn.type = 'button';
-          declineBtn.textContent = 'Decline invite';
-          declineBtn.addEventListener('click', async function() {
-            errorEl.textContent = '';
-            try {
-              await apiFetch('/bookings/' + bookingId + '/respond', {
-                method: 'POST',
-                body: JSON.stringify({ action: 'decline' })
-              });
-              location.reload();
-            } catch (err) {
-              errorEl.textContent = err.message;
-            }
-          });
-
-          actionsEl.appendChild(acceptBtn);
-          actionsEl.appendChild(declineBtn);
-        }
-
-      } catch (err) {
-        statusEl.textContent = '';
-        errorEl.textContent = err.message;
+      /* Queue status while waiting — clock times only, NO eating minutes */
+      if (bk.status === 'confirmed' && live) {
+        html +=
+          '<div class="card">' +
+          '<div class="card-title">Your Queue Status</div>' +
+          '<div class="estimate-grid">' +
+          '<div class="estimate-item"><div class="label">Expected seating</div><div class="value">' + escHtml(live.expected_seat_time || '-') + '</div></div>' +
+          '<div class="estimate-item"><div class="label">Estimated finish</div><div class="value">' + escHtml(live.expected_finish_time || '-') + '</div></div>' +
+          '<div class="estimate-item"><div class="label">Parties ahead</div><div class="value">' + (live.parties_ahead != null ? live.parties_ahead : '-') + '</div></div>' +
+          '<div class="estimate-item"><div class="label">Tables free</div><div class="value">' + (live.tables_in_use != null ? (live.tables_total - live.tables_in_use) + ' free' : '-') + '</div></div>' +
+          '</div></div>';
       }
+
+      /* Seated — no numbers, just a message */
+      if (bk.status === 'seated') {
+        html +=
+          '<div class="card">' +
+          '<div class="card-title">You are Seated!</div>' +
+          '<p style="color:var(--text-muted);font-size:0.9rem;">Enjoy your meal. Share your experience after you are done.</p>' +
+          '</div>';
+      }
+
+      /* Completed — prompt feedback */
+      if (bk.status === 'completed') {
+        html +=
+          '<div class="card" style="border-color:rgba(108,99,255,0.4);">' +
+          '<div class="card-title">How was your meal?</div>' +
+          '<p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:0.75rem;">' +
+          'Share your experience — it helps us give better time estimates to everyone.</p>' +
+          '<a class="btn btn-primary" href="feedback.html?booking_id=' + bookingId + '">Leave feedback</a>' +
+          '</div>';
+      }
+
+      /* Members */
+      if (members.length > 0) {
+        html += '<div class="card"><div class="card-title">Party Members</div>' +
+          '<div class="table-wrap"><table><thead><tr><th>Name / Phone</th><th>Status</th></tr></thead><tbody>';
+        members.forEach(function(m) {
+          const display = m.name ? escHtml(m.name) : ('xxxxxx' + escHtml(m.phone_last4 || ''));
+          html += '<tr><td>' + display + '</td><td>' + badge(m.invite_status) + '</td></tr>';
+        });
+        html += '</tbody></table></div></div>';
+      }
+
+      /* Actions */
+      const isHost        = String(bk.host_user_id) === String(currentUserId);
+      const showGuestActs = !isHost && bk.status === 'confirmed';
+
+      html += '<div class="btn-row"><button type="button" class="btn btn-secondary" id="refreshBtn">Refresh</button>';
+      content.innerHTML = html + '</div>';
+
+      document.getElementById('refreshBtn').addEventListener('click', () => loadBooking());
+
+      if (isHost && bk.status === 'confirmed') {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn btn-danger';
+        cancelBtn.textContent = 'Cancel Booking';
+        cancelBtn.addEventListener('click', async function() {
+          clearAlert(errorEl); clearAlert(successEl);
+          cancelBtn.textContent = 'Cancelling...';
+          try {
+            await apiFetch('/bookings/' + bookingId + '/cancel', { method: 'POST' });
+            showAlert(successEl, 'Booking cancelled.', 'success');
+            setTimeout(function() { loadBooking(); }, 900);
+          } catch(err) { showAlert(errorEl, err.message); cancelBtn.textContent = 'Cancel Booking'; }
+        });
+        document.querySelector('.btn-row').appendChild(cancelBtn);
+      }
+
+      if (showGuestActs) {
+        ['accept', 'decline'].forEach(function(action) {
+          const btn = document.createElement('button');
+          btn.className = action === 'accept' ? 'btn btn-success' : 'btn btn-danger';
+          btn.textContent = action === 'accept' ? 'Accept Invite' : 'Decline';
+          btn.addEventListener('click', async function() {
+            clearAlert(errorEl);
+            try {
+              await apiFetch('/bookings/' + bookingId + '/respond', { method: 'POST', body: JSON.stringify({ action: action }) });
+              showAlert(successEl, action === 'accept' ? 'Invite accepted!' : 'Invite declined.', 'success');
+              setTimeout(function() { loadBooking(); }, 900);
+            } catch(err) { showAlert(errorEl, err.message); }
+          });
+          document.querySelector('.btn-row').appendChild(btn);
+        });
+      }
+
+    } catch(err) {
+      loadingEl.textContent = '';
+      showAlert(document.getElementById('errorMsg'), err.message);
     }
+  }
 
-    loadBooking();
-
-    // Auto-refresh every 30 seconds
-    setInterval(function() { location.reload(); }, 30000);
-  </script>
+  loadBooking();
+  setInterval(loadBooking, 30000);
+</script>
 </body>
 </html>

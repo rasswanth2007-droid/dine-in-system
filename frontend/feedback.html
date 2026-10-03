@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dine-In - Feedback</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .star-row { display:flex; gap:0.5rem; margin-top:0.5rem; }
+    .star { font-size:2rem; cursor:pointer; opacity:0.25; user-select:none; line-height:1; }
+    .star.lit { opacity:1; }
+    .slider-wrap { margin-top:0.5rem; }
+    .slider-wrap input[type=range] { width:100%; accent-color:var(--accent); }
+    .slider-val { display:inline-block; min-width:70px; font-size:1.1rem; font-weight:700; color:var(--accent2); margin-left:0.5rem; }
+    .choice-row { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.5rem; }
+    .choice-btn {
+      padding:0.35rem 0.85rem; border-radius:99px;
+      border:1px solid var(--border); background:var(--surface2);
+      color:var(--text-muted); font-size:0.85rem; cursor:pointer; font-family:inherit;
+    }
+    .choice-btn.selected { border-color:var(--accent); background:var(--accent-glow); color:var(--accent2); }
+    .q-label { font-size:0.875rem; font-weight:600; margin-bottom:0.25rem; }
+    .q-section { margin-bottom:1.5rem; }
+    .restaurant-banner {
+      background:var(--accent-glow); border:1px solid rgba(108,99,255,0.35);
+      border-radius:var(--radius-sm); padding:0.75rem 1rem; margin-bottom:1.25rem;
+      display:flex; align-items:center; gap:0.75rem;
+    }
+    .restaurant-banner .rb-icon { font-size:1.5rem; }
+    .restaurant-banner .rb-name { font-weight:700; font-size:1rem; }
+    .restaurant-banner .rb-meta { font-size:0.8rem; color:var(--text-muted); }
+    .thankyou { text-align:center; padding:3rem 1rem; }
+    .thankyou .big { font-size:3rem; margin-bottom:0.75rem; }
+    .thankyou h2 { margin-bottom:0.5rem; }
+    .thankyou p { color:var(--text-muted); font-size:0.9rem; }
+  </style>
+</head>
+<body>
+<nav class="nav"></nav>
+
+<div class="page-wrap">
+  <div class="page-header">
+    <h1>Share Your Experience</h1>
+    <p>Your feedback helps us give more accurate time estimates to everyone</p>
+  </div>
+
+  <div class="alert alert-error" id="errorMsg"></div>
+  <p class="loading" id="loadingMsg">Loading...</p>
+
+  <!-- Restaurant picker — shown only when no booking_id -->
+  <div id="restaurantPickerSection" style="display:none;">
+    <div class="card">
+      <div class="card-title">Which restaurant did you visit?</div>
+      <div class="form-group" style="margin-bottom:0.75rem;">
+        <label for="restaurantPicker">Select restaurant</label>
+        <select id="restaurantPicker">
+          <option value="">Choose a restaurant...</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="startFeedbackBtn">Continue</button>
+    </div>
+  </div>
+
+  <!-- Main form -->
+  <div id="formArea" style="display:none;">
+
+    <!-- Restaurant context banner — prominent -->
+    <div class="restaurant-banner" id="restaurantBanner">
+      <div class="rb-icon">🍽</div>
+      <div>
+        <div class="rb-name" id="bannerName">Restaurant</div>
+        <div class="rb-meta" id="bannerMeta"></div>
+      </div>
+    </div>
+
+    <div class="card">
+
+      <!-- Overall rating -->
+      <div class="q-section">
+        <div class="q-label">Overall experience</div>
+        <div class="star-row" id="starRow">
+          <span class="star" data-val="1">★</span>
+          <span class="star" data-val="2">★</span>
+          <span class="star" data-val="3">★</span>
+          <span class="star" data-val="4">★</span>
+          <span class="star" data-val="5">★</span>
+        </div>
+      </div>
+
+      <!-- Actual eat duration -->
+      <div class="q-section">
+        <div class="q-label">How long were you actually eating? <span class="slider-val" id="eatVal">--</span></div>
+        <div class="slider-wrap">
+          <input type="range" id="eatSlider" min="10" max="180" value="60" step="5">
+          <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-dim);margin-top:0.2rem;">
+            <span>10 min</span><span>1 hr</span><span>3 hrs</span>
+          </div>
+        </div>
+        <p style="font-size:0.78rem;color:var(--text-dim);margin-top:0.4rem;">
+          From when you were seated until you left the table.
+        </p>
+      </div>
+
+      <!-- Wait accuracy -->
+      <div class="q-section">
+        <div class="q-label">How accurate was our wait time estimate?</div>
+        <div class="choice-row" id="waitAccRow">
+          <button class="choice-btn" data-val="much_earlier">Much earlier than told</button>
+          <button class="choice-btn" data-val="a_bit_earlier">A bit earlier</button>
+          <button class="choice-btn" data-val="accurate">About right</button>
+          <button class="choice-btn" data-val="a_bit_later">A bit later</button>
+          <button class="choice-btn" data-val="much_later">Much later</button>
+        </div>
+      </div>
+
+      <!-- Crowd -->
+      <div class="q-section">
+        <div class="q-label">How busy did it feel?</div>
+        <div class="choice-row" id="crowdRow">
+          <button class="choice-btn" data-val="very_quiet">Very quiet</button>
+          <button class="choice-btn" data-val="moderate">Moderate</button>
+          <button class="choice-btn" data-val="busy">Busy</button>
+          <button class="choice-btn" data-val="very_busy">Very busy</button>
+        </div>
+      </div>
+
+      <!-- Service speed -->
+      <div class="q-section">
+        <div class="q-label">How was the service speed?</div>
+        <div class="choice-row" id="serviceRow">
+          <button class="choice-btn" data-val="slow">Slow</button>
+          <button class="choice-btn" data-val="average">Average</button>
+          <button class="choice-btn" data-val="fast">Fast</button>
+          <button class="choice-btn" data-val="very_fast">Very fast</button>
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="q-section" style="margin-bottom:0;">
+        <div class="q-label">Anything else? (optional)</div>
+        <textarea id="freeText" rows="3"
+          placeholder="Any comments about your visit..."
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);
+                 border-radius:var(--radius-sm);color:var(--text);padding:0.6rem 0.875rem;
+                 font-size:0.9rem;font-family:inherit;outline:none;resize:vertical;margin-top:0.4rem;"></textarea>
+      </div>
+
+    </div>
+
+    <button class="btn btn-primary" id="submitBtn" style="margin-top:0.5rem;">Submit Feedback</button>
+  </div>
+
+  <!-- Thank you -->
+  <div id="thankYou" class="card thankyou" style="display:none;">
+    <div class="big">🎉</div>
+    <h2>Thank you!</h2>
+    <p>Your feedback makes our predictions smarter for everyone.<br>You will see better estimates on your next visit.</p>
+    <div class="btn-row" style="justify-content:center;margin-top:1.5rem;">
+      <a href="restaurants.html" class="btn btn-primary">Book again</a>
+      <a href="mybookings.html"  class="btn btn-secondary">My bookings</a>
+    </div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+<script>
+  requireUser();
+  buildNav();
+
+  const params    = new URLSearchParams(location.search);
+  const bookingId = params.get('booking_id');
+
+  let rating  = 0;
+  let waitAcc = null;
+  let crowd   = null;
+  let service = null;
+  let selectedRestaurantId   = null;
+  let selectedRestaurantName = null;
+
+  function setBanner(name, meta) {
+    document.getElementById('bannerName').textContent = name || 'Your Visit';
+    document.getElementById('bannerMeta').textContent = meta || '';
+  }
+
+  async function init() {
+    const errorEl   = document.getElementById('errorMsg');
+    const loadingEl = document.getElementById('loadingMsg');
+
+    if (bookingId) {
+      /* Load booking to get restaurant name */
+      try {
+        const data = await apiFetch('/bookings/' + bookingId);
+        loadingEl.textContent = '';
+        const bk = data.booking || {};
+        selectedRestaurantId   = bk.restaurant_id;
+        selectedRestaurantName = bk.restaurant;
+        setBanner(bk.restaurant, 'Party of ' + (bk.party_size || '?') + ' - Booking #' + bookingId);
+        document.getElementById('formArea').style.display = '';
+        setupForm();
+      } catch(err) {
+        loadingEl.textContent = '';
+        showAlert(errorEl, err.message);
+      }
+    } else {
+      /* No booking ID — show restaurant picker first */
+      loadingEl.textContent = '';
+      try {
+        const rests = await apiFetch('/restaurants');
+        const sel = document.getElementById('restaurantPicker');
+        sel.innerHTML = '<option value="">Choose a restaurant...</option>';
+        (rests || []).forEach(function(r) {
+          const o = document.createElement('option');
+          o.value = r.restaurant_id;
+          o.textContent = r.name + ' - ' + r.city;
+          o.dataset.name = r.name;
+          o.dataset.city = r.city;
+          sel.appendChild(o);
+        });
+        document.getElementById('restaurantPickerSection').style.display = '';
+      } catch(err) {
+        showAlert(errorEl, 'Could not load restaurants: ' + err.message);
+      }
+
+      document.getElementById('startFeedbackBtn').addEventListener('click', function() {
+        const sel = document.getElementById('restaurantPicker');
+        if (!sel.value) { showAlert(errorEl, 'Please select a restaurant.'); return; }
+        selectedRestaurantId   = sel.value;
+        const opt = sel.selectedOptions[0];
+        selectedRestaurantName = opt.dataset.name;
+        setBanner(opt.dataset.name, opt.dataset.city);
+        document.getElementById('restaurantPickerSection').style.display = 'none';
+        document.getElementById('formArea').style.display = '';
+        setupForm();
+      });
+    }
+  }
+
+  function setupForm() {
+    /* stars */
+    document.querySelectorAll('.star').forEach(function(s) {
+      s.addEventListener('click', function() {
+        rating = parseInt(s.dataset.val, 10);
+        document.querySelectorAll('.star').forEach(function(x) {
+          x.classList.toggle('lit', parseInt(x.dataset.val, 10) <= rating);
+        });
+      });
+      s.addEventListener('mouseover', function() {
+        const v = parseInt(s.dataset.val, 10);
+        document.querySelectorAll('.star').forEach(function(x) {
+          x.style.opacity = parseInt(x.dataset.val, 10) <= v ? '0.85' : '0.25';
+        });
+      });
+      s.addEventListener('mouseout', function() {
+        document.querySelectorAll('.star').forEach(function(x) {
+          x.style.opacity = parseInt(x.dataset.val, 10) <= rating ? '1' : '0.25';
+        });
+      });
+    });
+
+    /* slider */
+    const slider = document.getElementById('eatSlider');
+    const val    = document.getElementById('eatVal');
+    function updateSlider() {
+      const v = parseInt(slider.value, 10);
+      val.textContent = v >= 60
+        ? Math.floor(v / 60) + 'h ' + (v % 60 ? v % 60 + 'm' : '')
+        : v + ' min';
+    }
+    slider.addEventListener('input', updateSlider);
+    updateSlider();
+
+    /* choice rows */
+    function setupRow(rowId, setter) {
+      document.querySelectorAll('#' + rowId + ' .choice-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#' + rowId + ' .choice-btn').forEach(function(b) { b.classList.remove('selected'); });
+          btn.classList.add('selected');
+          setter(btn.dataset.val);
+        });
+      });
+    }
+    setupRow('waitAccRow', function(v) { waitAcc = v; });
+    setupRow('crowdRow',   function(v) { crowd   = v; });
+    setupRow('serviceRow', function(v) { service = v; });
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', function() {
+    const errorEl = document.getElementById('errorMsg');
+    clearAlert(errorEl);
+    if (rating === 0) { showAlert(errorEl, 'Please give an overall star rating.'); return; }
+
+    const payload = {
+      booking_id:            bookingId || null,
+      restaurant_id:         selectedRestaurantId,
+      restaurant_name:       selectedRestaurantName,
+      rating:                rating,
+      actual_eat_min:        parseInt(document.getElementById('eatSlider').value, 10),
+      wait_accuracy:         waitAcc,
+      crowd_level:           crowd,
+      service_speed:         service,
+      comments:              document.getElementById('freeText').value.trim() || null,
+      submitted_at:          new Date().toISOString()
+    };
+
+    const saved = JSON.parse(localStorage.getItem('feedback_log') || '[]');
+    saved.push(payload);
+    localStorage.setItem('feedback_log', JSON.stringify(saved));
+
+    document.getElementById('formArea').style.display  = 'none';
+    document.getElementById('thankYou').style.display  = '';
+  });
+
+  init();
+</script>
+</body>
+</html>
